@@ -9,37 +9,42 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="theme-color" content="#0a0a0f">
-    <meta name="description" content="Zamanın Yankısı - Zaman döngüsü bulmaca platformer oyunu">
     <title>Zamanın Yankısı</title>
     <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
-    <div id="game-wrapper">
-        <div id="game-container">
-            <!-- Menüler -->
-            <div id="main-menu" class="screen">
-                <h1 class="game-title">ZAMANIN YANKISI</h1>
-                <button class="menu-btn" onclick="Game.showLevelSelect()">OYNA</button>
-            </div>
+    <!-- Telefonu çevir uyarısı (dikey modda gösterilir) -->
+    <div id="rotate-overlay">
+        <div class="rotate-content">
+            <div class="rotate-icon">📱</div>
+            <p>Telefonu yatay çevir</p>
+        </div>
+    </div>
 
-            <div id="level-select" class="screen" style="display: none;">
-                <h2>BÖLÜM SEÇ</h2>
-                <div class="level-grid" id="level-grid"></div>
-                <button class="menu-btn back-btn" onclick="Game.showMainMenu()">GERİ DÖN</button>
-            </div>
-
-            <!-- HUD -->
-            <div id="ui-layer">
-                <div id="time-display">Zaman: 0.0s</div>
-                <div id="loop-counter">Döngü: 1</div>
-                <button id="menu-return-btn" onclick="Game.showMainMenu()">MENÜ</button>
-            </div>
-
-            <canvas id="gameCanvas"></canvas>
+    <div id="game-container">
+        <!-- Menüler -->
+        <div id="main-menu" class="screen">
+            <h1 class="game-title">ZAMANIN YANKISI</h1>
+            <button class="menu-btn" onclick="Game.showLevelSelect()">OYNA</button>
         </div>
 
-        <!-- Mobil Kontroller — game container DIŞINDA -->
+        <div id="level-select" class="screen" style="display: none;">
+            <h2>BÖLÜM SEÇ</h2>
+            <div class="level-grid" id="level-grid"></div>
+            <button class="menu-btn back-btn" onclick="Game.showMainMenu()">GERİ DÖN</button>
+        </div>
+
+        <!-- HUD -->
+        <div id="ui-layer">
+            <div id="time-display">Zaman: 0.0s</div>
+            <div id="loop-counter">Döngü: 1</div>
+            <button id="menu-return-btn" onclick="Game.showMainMenu()">MENÜ</button>
+        </div>
+
+        <canvas id="gameCanvas"></canvas>
+
+        <!-- Mobil Kontroller (oyun container içinde overlay) -->
         <div id="mobile-controls">
             <div id="joystick-zone">
                 <div id="joystick-base">

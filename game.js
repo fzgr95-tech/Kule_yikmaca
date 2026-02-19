@@ -48,6 +48,11 @@ document.addEventListener('touchmove', (e) => {
     if (!e.target.closest('.level-grid')) e.preventDefault();
 }, { passive: false });
 
+// Yatay yön kilidi
+if (screen.orientation && screen.orientation.lock) {
+    screen.orientation.lock('landscape').catch(() => { });
+}
+
 // Girdi Yöneticisi
 const Input = {
     keys: {},
