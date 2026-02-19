@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#0a0a0f">
+    <meta name="description" content="Zamanın Yankısı - Zaman döngüsü bulmaca platformer oyunu">
+    <title>Zamanın Yankısı</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div id="game-container">
+        <!-- Menüler -->
+        <div id="main-menu" class="screen">
+            <h1 class="game-title">ZAMANIN YANKISI</h1>
+            <button class="menu-btn" onclick="Game.showLevelSelect()">OYNA</button>
+        </div>
+
+        <div id="level-select" class="screen" style="display: none;">
+            <h2>BÖLÜM SEÇ</h2>
+            <div class="level-grid" id="level-grid"></div>
+            <button class="menu-btn back-btn" onclick="Game.showMainMenu()">GERİ DÖN</button>
+        </div>
+
+        <!-- HUD -->
+        <div id="ui-layer">
+            <div id="time-display">Zaman: 0.0s</div>
+            <div id="loop-counter">Döngü: 1</div>
+            <button id="menu-return-btn" onclick="Game.showMainMenu()">MENÜ</button>
+        </div>
+
+        <canvas id="gameCanvas"></canvas>
+
+        <!-- Mobil Kontroller -->
+        <div id="mobile-controls">
+            <!-- Sol: Joystick -->
+            <div id="joystick-zone">
+                <div id="joystick-base">
+                    <div id="joystick-thumb"></div>
+                </div>
+            </div>
+
+            <!-- Sağ: Aksiyon butonları -->
+            <div class="action-row">
+                <button id="btn-rewind" class="control-btn action-btn" aria-label="Geri Sar">R</button>
+                <button id="btn-jump" class="control-btn action-btn jump-btn" aria-label="Zıpla">▲</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="game.js"></script>
+</body>
+
+</html>
