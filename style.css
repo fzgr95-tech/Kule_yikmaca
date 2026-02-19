@@ -324,8 +324,10 @@ canvas {
     }
 
     #game-container {
-        width: 100%;
+        width: 100% !important;
+        height: auto !important;
         flex: 1;
+        flex-shrink: 1;
         min-height: 0;
         border-radius: 0;
         border: none;
