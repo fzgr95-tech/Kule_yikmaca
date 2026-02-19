@@ -12,42 +12,41 @@ const ctx = canvas.getContext('2d');
 // Ekran boyutlandırma
 function resize() {
     const container = document.getElementById('game-container');
-    const targetRatio = 800 / 450;
-    const windowRatio = window.innerWidth / window.innerHeight;
+    const isMobile = window.matchMedia('(pointer: coarse)').matches;
 
-    let finalWidth, finalHeight;
-
-    if (windowRatio > targetRatio) {
-        // Ekran daha geniş, yükseklikten kısıtla
-        finalHeight = window.innerHeight;
-        finalWidth = finalHeight * targetRatio;
-    } else {
-        // Ekran daha dar, genişlikten kısıtla
-        finalWidth = window.innerWidth;
-        finalHeight = finalWidth / targetRatio;
-    }
-
-    container.style.width = finalWidth + 'px';
-    container.style.height = finalHeight + 'px';
-
-    // Canvas çözünürlüğü sabit kalsın (kalite için)
+    // Canvas çözünürlüğü her zaman sabit
     canvas.width = 800;
     canvas.height = 450;
+
+    if (!isMobile) {
+        // Masaüstü: Manuel boyutlandırma
+        const targetRatio = 800 / 450;
+        const windowRatio = window.innerWidth / window.innerHeight;
+
+        let finalWidth, finalHeight;
+        if (windowRatio > targetRatio) {
+            finalHeight = window.innerHeight;
+            finalWidth = finalHeight * targetRatio;
+        } else {
+            finalWidth = window.innerWidth;
+            finalHeight = finalWidth / targetRatio;
+        }
+
+        container.style.width = finalWidth + 'px';
+        container.style.height = finalHeight + 'px';
+    } else {
+        // Mobil: CSS hallediyor, JS karışmasın
+        container.style.width = '';
+        container.style.height = '';
+    }
 }
 window.addEventListener('resize', resize);
-// Sayfa yüklendiğinde ve biraz sonra (mobil adres çubuğu için) tekrar çağır
 window.onload = () => { Game.init(); resize(); setTimeout(resize, 100); setTimeout(resize, 500); };
 
-// iOS / Mobil: Sayfa kaydırmayı engelle (oyun alanı dışında)
+// iOS / Mobil: Sayfa kaydırmayı engelle
 document.addEventListener('touchmove', (e) => {
-    // Level grid scroll'una izin ver
     if (!e.target.closest('.level-grid')) e.preventDefault();
 }, { passive: false });
-
-// Ekran yönü kilidi (yatay tercih)
-if (screen.orientation && screen.orientation.lock) {
-    screen.orientation.lock('landscape').catch(() => { });
-}
 
 // Girdi Yöneticisi
 const Input = {
