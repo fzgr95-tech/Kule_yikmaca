@@ -318,43 +318,37 @@ canvas {
    MOBILE: Telefon (dokunmatik cihaz) — Kontrolleri göster
    ============================================================== */
 @media (pointer: coarse) {
+    #game-wrapper {
+        justify-content: flex-start;
+        padding: 0;
+    }
+
+    #game-container {
+        width: 100%;
+        flex: 1;
+        min-height: 0;
+        border-radius: 0;
+        border: none;
+        box-shadow: none;
+    }
+
     #mobile-controls {
         display: flex;
         width: 100%;
         justify-content: space-between;
         align-items: center;
-        padding: 10px 20px;
+        padding: 12px 20px;
+        padding-bottom: max(12px, env(safe-area-inset-bottom, 12px));
         flex-shrink: 0;
-    }
-
-    #game-wrapper {
-        justify-content: space-between;
-        padding: 10px 0;
-        padding-bottom: env(safe-area-inset-bottom, 10px);
-    }
-
-    /* Oyun alanı ekranın üst kısmını kaplasın */
-    #game-container {
-        width: 100%;
-        max-width: 100vw;
-        height: auto;
-        aspect-ratio: 800 / 450;
-        border-radius: 0;
-        border: none;
-        box-shadow: none;
+        background: rgba(0, 0, 0, 0.3);
     }
 }
 
 /* Telefon — DİKEY (portrait) */
 @media (pointer: coarse) and (orientation: portrait) {
-    #game-wrapper {
-        justify-content: flex-start;
-        padding-top: env(safe-area-inset-top, 0px);
-    }
-
     #mobile-controls {
         padding: 16px 24px;
-        padding-bottom: max(16px, env(safe-area-inset-bottom, 16px));
+        padding-bottom: max(20px, env(safe-area-inset-bottom, 20px));
     }
 
     #joystick-base {
@@ -383,7 +377,6 @@ canvas {
         gap: 14px;
     }
 
-    /* Menü ayarları */
     .game-title {
         font-size: 1.8em;
         margin-bottom: 20px;
