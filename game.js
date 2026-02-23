@@ -904,166 +904,449 @@ function fixPlatformPosition(from, toX, toY, toWidth) {
 }
 
 // ============================================
-// OTO-GENERATOR: 99 Bölüm (Rule-Based)
+// LAYOUT × PUZZLE LEVEL GENERATOR
+// 8 Layouts × 10 Puzzles × Progressive Difficulty
 // ============================================
 function generateLevels() {
-    for (let i = 4; i < 99; i++) {
-        const rand = createSeededRandom(i * 7919 + 42);
-        const isTower = i > 10;
+    const W = 800, GY = 430, GH = 40, WT = 25;
 
-        // === PROGRESSIVE DIFFICULTY PARAMETRELERI ===
-        const levelNum = i - 3; // 1-based (bölüm 5 = levelNum 2)
-        const numButtons = Math.min(1 + Math.floor(levelNum / 3), 5); // 1→2→3→4→5
-        const baseWidth = Math.max(60, 140 - levelNum * 2.5); // Platform genişliği azalır
-        const vertGap = Math.max(50, 70 - levelNum * 0.5); // Dikey aralık azalır
-        const widthRatio = 0.6 + rand() * 0.25; // Üst/Alt genişlik oranı: 0.6-0.85
-
-        const level = {
-            playerStart: { x: 50, y: 350 },
-            objects: [
-                { type: 'Platform', x: 0, y: 430, width: 800, height: 40 },
-            ]
+    // ─── Difficulty Scaling ───
+    function getDiff(n) {
+        const t = Math.min(1, (n - 1) / 94);
+        return {
+            pw: Math.max(55, Math.floor(140 - t * 80)),
+            vg: Math.max(40, Math.floor(70 - t * 25)),
+            nb: Math.min(5, 1 + Math.floor(t * 4.5)),
+            nf: Math.min(4, 1 + Math.floor(t * 3))
         };
+    }
 
-        const GROUND = { x: 0, y: 430, width: 800 };
+    // ─── Puzzle Type Selection (no consecutive repeat) ───
+    function pickType(n, rand, last) {
+        let p;
+        if (n <= 6) p = ['LINEAR'];
+        else if (n <= 10) p = ['LINEAR', 'GHOST_SYNC'];
+        else if (n <= 15) p = ['GHOST_SYNC', 'CEILING_CRAWL'];
+        else if (n <= 21) p = ['CEILING_CRAWL', 'DOUBLE_BTN', 'GHOST_SYNC'];
+        else if (n <= 28) p = ['DOUBLE_BTN', 'SEQUENCE', 'SPLIT_PATH'];
+        else if (n <= 38) p = ['SEQUENCE', 'SPLIT_PATH', 'TOWER'];
+        else if (n <= 52) p = ['TOWER', 'CHAIN', 'SPLIT_PATH'];
+        else if (n <= 66) p = ['CHAIN', 'FORTRESS', 'TOWER'];
+        else if (n <= 82) p = ['FORTRESS', 'MASTER', 'CHAIN'];
+        else p = ['MASTER', 'FORTRESS'];
+        let f = p.filter(t => t !== last);
+        if (!f.length) f = p;
+        return f[Math.floor(rand() * f.length)];
+    }
 
-        if (!isTower) {
-            // ====== YATAY SİSTEM (Bölüm 5-11) — Rule-Based ======
+    // ─── Layout Type Selection (no consecutive repeat) ───
+    function pickLayout(n, rand, last) {
+        let p;
+        if (n <= 8) p = ['H_MAZE', 'ARENA'];
+        else if (n <= 18) p = ['H_MAZE', 'ARENA', 'SPLIT', 'BACKTRACK'];
+        else if (n <= 35) p = ['SPLIT', 'BACKTRACK', 'CORE', 'M_FLOOR'];
+        else if (n <= 55) p = ['V_TOWER', 'CORE', 'SPIRAL', 'M_FLOOR'];
+        else if (n <= 75) p = ['V_TOWER', 'SPIRAL', 'BACKTRACK', 'CORE'];
+        else p = ['V_TOWER', 'SPIRAL', 'CORE', 'M_FLOOR', 'BACKTRACK'];
+        let f = p.filter(t => t !== last);
+        if (!f.length) f = p;
+        return f[Math.floor(rand() * f.length)];
+    }
 
-            // Duvar konumu (level bazlı çeşitlilik)
-            const wallX = 350 + Math.floor(rand() * 100); // Duvar orta-sağda (350-450)
+    // ─── Helper: validated platform placement ───
+    function vPlat(objs, prev, x, y, w) {
+        if (!canReach(prev, { x, y, width: w })) x = fixPlatformPosition(prev, x, y, w);
+        x = Math.max(10, Math.min(W - w - 10, x));
+        y = Math.max(80, y);
+        objs.push({ type: 'Platform', x, y, width: w, height: 20 });
+        return { x, y, width: w };
+    }
 
-            // TEK duvar + TEK kapı
-            level.objects.push({ type: 'Platform', x: wallX, y: 0, width: 25, height: 330 });
-            level.objects.push({ type: 'Door', x: wallX, y: 330, triggerId: 1 });
+    // ════════════════════════════════════════════
+    //  8 LAYOUT BUILDERS
+    //  Each returns { o[], spawn, exit, path[] }
+    //  path = ordered key platforms for puzzle placement
+    // ════════════════════════════════════════════
 
-            // === MERDİVEN BASAMAKLARI (her zaman SOL tarafta — oyuncunun yanında) ===
-            let currentWidth = Math.floor(baseWidth);
-            let currentX = 20; // Oyuncu sol tarafta başlar, basamaklar da sol tarafta
-            let currentY = 380;
-            const stairSteps = [];
+    // HORIZONTAL_MAZE — Wide ground, platforms spread horizontally
+    function layHMaze(rand, d) {
+        const o = [{ type: 'Platform', x: 0, y: GY, width: W, height: GH }];
+        const path = [], gnd = { x: 0, y: GY, width: W };
+        const np = 5 + Math.floor(rand() * 3);
+        const seg = Math.floor((W - 60) / np);
+        let prev = gnd;
+        for (let i = 0; i < np; i++) {
+            const px = 20 + i * seg + Math.floor(rand() * seg * 0.3);
+            const py = GY - 35 - Math.floor(rand() * 70);
+            const pw = Math.max(d.pw, 55 + Math.floor(rand() * 35));
+            prev = vPlat(o, prev, px, py, pw);
+            path.push({ x: prev.x, y: prev.y, w: prev.width });
+        }
+        return { o, spawn: { x: 50, y: GY - 80 }, exit: { x: W - 70, y: GY - 60 }, path };
+    }
 
-            for (let b = 0; b < numButtons; b++) {
-                const stepW = Math.floor(currentWidth);
-                level.objects.push({ type: 'Platform', x: currentX, y: currentY, width: stepW, height: 20 });
-                stairSteps.push({ x: currentX, y: currentY, width: stepW });
+    // ARENA — Sparse elevated platforms with wide gaps
+    function layArena(rand, d) {
+        const o = [{ type: 'Platform', x: 0, y: GY, width: W, height: GH }];
+        const path = [], gnd = { x: 0, y: GY, width: W };
+        const spots = [
+            [60 + Math.floor(rand() * 50), GY - 55 - Math.floor(rand() * 50)],
+            [220 + Math.floor(rand() * 80), GY - 80 - Math.floor(rand() * 60)],
+            [440 + Math.floor(rand() * 80), GY - 50 - Math.floor(rand() * 70)],
+            [630 + Math.floor(rand() * 50), GY - 70 - Math.floor(rand() * 50)]
+        ];
+        let prev = gnd;
+        for (const [sx, sy] of spots) {
+            const pw = Math.max(d.pw + 10, 70 + Math.floor(rand() * 40));
+            prev = vPlat(o, prev, sx, sy, pw);
+            path.push({ x: prev.x, y: prev.y, w: prev.width });
+        }
+        return { o, spawn: { x: 50, y: GY - 80 }, exit: { x: W - 80, y: GY - 60 }, path };
+    }
 
-                // Buton bu basamakta
-                level.objects.push({ type: 'Button', x: currentX + 10, y: currentY - 10, id: b + 1 });
+    // SPLIT_BRANCH — Fork into upper and lower routes
+    function laySplit(rand, d) {
+        const o = [{ type: 'Platform', x: 0, y: GY, width: W, height: GH }];
+        const path = [], gnd = { x: 0, y: GY, width: W };
+        // Entry
+        let prev = vPlat(o, gnd, 70, GY - 50, d.pw + 30);
+        path.push({ x: prev.x, y: prev.y, w: prev.width });
+        // Upper branch
+        let u = vPlat(o, prev, 170 + Math.floor(rand() * 50), GY - 130 - Math.floor(rand() * 40), d.pw);
+        path.push({ x: u.x, y: u.y, w: u.width });
+        u = vPlat(o, u, 320 + Math.floor(rand() * 60), u.y - d.vg + Math.floor(rand() * 15), d.pw);
+        path.push({ x: u.x, y: u.y, w: u.width });
+        // Lower branch
+        let lo = vPlat(o, prev, 190 + Math.floor(rand() * 50), GY - 40 - Math.floor(rand() * 15), d.pw + 15);
+        path.push({ x: lo.x, y: lo.y, w: lo.width });
+        lo = vPlat(o, lo, 380 + Math.floor(rand() * 50), GY - 35 - Math.floor(rand() * 25), d.pw);
+        path.push({ x: lo.x, y: lo.y, w: lo.width });
+        // Merge
+        const mp = vPlat(o, u, 540 + Math.floor(rand() * 60), GY - 70, d.pw + 25);
+        path.push({ x: mp.x, y: mp.y, w: mp.width });
+        return { o, spawn: { x: 50, y: GY - 80 }, exit: { x: W - 65, y: mp.y - 50 }, path };
+    }
 
-                // TAVAN ENGELİ: Bu basamağın ÜSTÜNde (oyuncu eğilerek geçer)
-                if (b < numButtons - 1) {
-                    const obstW = Math.floor(stepW * (0.5 + rand() * 0.2));
-                    const obstY = currentY - 35; // Eğilince 22px geçer, ayakta 40px çarpar
-                    const obstX = currentX + stepW - obstW;
-                    level.objects.push({ type: 'Platform', x: obstX, y: obstY, width: obstW, height: 10 });
-                }
+    // BACKTRACK — Go right, then return left at higher elevation
+    function layBacktrack(rand, d) {
+        const o = [{ type: 'Platform', x: 0, y: GY, width: W, height: GH }];
+        const path = [], gnd = { x: 0, y: GY, width: W };
+        let prev = gnd;
+        // Outward path (right)
+        const outward = [
+            [90 + Math.floor(rand() * 50), GY - 50 - Math.floor(rand() * 30)],
+            [260 + Math.floor(rand() * 60), GY - 90 - Math.floor(rand() * 40)],
+            [440 + Math.floor(rand() * 80), GY - 65 - Math.floor(rand() * 50)],
+            [610 + Math.floor(rand() * 50), GY - 110 - Math.floor(rand() * 40)]
+        ];
+        for (const [rx, ry] of outward) {
+            prev = vPlat(o, prev, rx, ry, d.pw + Math.floor(rand() * 20));
+            path.push({ x: prev.x, y: prev.y, w: prev.width });
+        }
+        // Return path (left, higher)
+        const retY = prev.y - d.vg;
+        const ret = [
+            [500 + Math.floor(rand() * 40), retY],
+            [300 + Math.floor(rand() * 60), retY - d.vg + Math.floor(rand() * 15)],
+            [120 + Math.floor(rand() * 50), retY - d.vg * 2 + Math.floor(rand() * 20)]
+        ];
+        for (const [rx, ry] of ret) {
+            prev = vPlat(o, prev, rx, Math.max(100, ry), d.pw + Math.floor(rand() * 15));
+            path.push({ x: prev.x, y: prev.y, w: prev.width });
+        }
+        return { o, spawn: { x: 50, y: GY - 80 }, exit: { x: 80, y: prev.y - 50 }, path };
+    }
 
-                // Sonraki basamak: yana kayma (duvarı geçmesin!)
-                const maxShift = Math.min(130 + Math.floor(rand() * 50), wallX - currentX - stepW - 30);
-                const shift = Math.max(40, maxShift);
-                currentX += shift;
-                currentY -= vertGap;
-                currentWidth = Math.floor(currentWidth * (0.65 + rand() * 0.2));
-                currentWidth = Math.max(55, currentWidth);
+    // CENTRAL_CORE — Hub platform in center, spokes radiate out
+    function layCore(rand, d) {
+        const o = [{ type: 'Platform', x: 0, y: GY, width: W, height: GH }];
+        const path = [], gnd = { x: 0, y: GY, width: W };
+        // Central hub
+        const cx = 280 + Math.floor(rand() * 100), cy = GY - 130 - Math.floor(rand() * 50);
+        const cw = 150 + Math.floor(rand() * 50);
+        o.push({ type: 'Platform', x: cx, y: cy, width: cw, height: 20 });
+        // Left spoke
+        let prev = gnd;
+        let lp = vPlat(o, prev, 35 + Math.floor(rand() * 30), GY - 55, d.pw + 25);
+        path.push({ x: lp.x, y: lp.y, w: lp.width });
+        lp = vPlat(o, lp, 100 + Math.floor(rand() * 50), cy + d.vg, d.pw);
+        path.push({ x: lp.x, y: lp.y, w: lp.width });
+        // Center
+        path.push({ x: cx, y: cy, w: cw });
+        // Right spoke
+        let rp = vPlat(o, { x: cx, y: cy, width: cw }, cx + cw + 20 + Math.floor(rand() * 40), cy + d.vg + Math.floor(rand() * 20), d.pw);
+        path.push({ x: rp.x, y: rp.y, w: rp.width });
+        rp = vPlat(o, rp, 580 + Math.floor(rand() * 80), GY - 45 - Math.floor(rand() * 30), d.pw + 10);
+        path.push({ x: rp.x, y: rp.y, w: rp.width });
+        // Top spoke
+        let tp = vPlat(o, { x: cx, y: cy, width: cw }, cx + Math.floor(rand() * 40), cy - d.vg - Math.floor(rand() * 20), d.pw);
+        path.push({ x: tp.x, y: tp.y, w: tp.width });
+        return { o, spawn: { x: 50, y: GY - 80 }, exit: { x: cx + 30, y: cy - 75 }, path };
+    }
 
-                // Ekran sınırları (duvardan önce kal!)
-                if (currentX + currentWidth > wallX - 10) currentX = wallX - currentWidth - 15;
-                if (currentX < 15) currentX = 15;
-                if (currentY < 180) currentY = 180; // Çok yukarı çıkmasın
+    // VERTICAL_TOWER — Tall column with alternating zigzag climb
+    function layVTower(rand, d) {
+        const o = [{ type: 'Platform', x: 0, y: GY, width: W, height: GH }];
+        const path = [], gnd = { x: 0, y: GY, width: W };
+        let prev = gnd;
+        const nSteps = 6 + Math.floor(rand() * 4);
+        const vgap = 45 + Math.floor(rand() * 25);
+        for (let i = 0; i < nSteps; i++) {
+            const isL = (i % 2 === 0);
+            const px = isL ? (25 + Math.floor(rand() * 130)) : (420 + Math.floor(rand() * 200));
+            const py = GY - (i + 1) * vgap;
+            if (py < 80) break;
+            const pw = Math.max(d.pw, 75 + Math.floor(rand() * 45));
+            prev = vPlat(o, prev, px, py, pw);
+            path.push({ x: prev.x, y: prev.y, w: prev.width });
+        }
+        const top = path[path.length - 1] || { x: 350, y: 200, w: 100 };
+        return { o, spawn: { x: 50, y: GY - 80 }, exit: { x: top.x + 15, y: top.y - 65 }, path };
+    }
+
+    // SPIRAL_ASCENT — Platforms spiral along edges going up
+    function laySpiral(rand, d) {
+        const o = [{ type: 'Platform', x: 0, y: GY, width: W, height: GH }];
+        const path = [], gnd = { x: 0, y: GY, width: W };
+        // Spiral: bottom-right → right → top-right → top-left → left → higher
+        const spiral = [
+            [480 + Math.floor(rand() * 80), GY - 50 - Math.floor(rand() * 25)],
+            [600 + Math.floor(rand() * 70), GY - 110 - Math.floor(rand() * 30)],
+            [500 + Math.floor(rand() * 60), GY - 170 - Math.floor(rand() * 25)],
+            [300 + Math.floor(rand() * 60), GY - 200 - Math.floor(rand() * 30)],
+            [110 + Math.floor(rand() * 60), GY - 230 - Math.floor(rand() * 25)],
+            [50 + Math.floor(rand() * 50), GY - 290 - Math.floor(rand() * 20)],
+            [180 + Math.floor(rand() * 80), GY - 330 - Math.floor(rand() * 15)]
+        ];
+        let prev = gnd;
+        for (const [sx, sy] of spiral) {
+            const pw = Math.max(d.pw, 60 + Math.floor(rand() * 35));
+            prev = vPlat(o, prev, sx, Math.max(90, sy), pw);
+            path.push({ x: prev.x, y: prev.y, w: prev.width });
+        }
+        const top = path[path.length - 1];
+        return { o, spawn: { x: 50, y: GY - 80 }, exit: { x: top.x + 10, y: top.y - 55 }, path };
+    }
+
+    // MULTI_FLOOR — 2-3 horizontal floors stacked with gaps between
+    function layMFloor(rand, d) {
+        const o = [{ type: 'Platform', x: 0, y: GY, width: W, height: GH }];
+        const path = [], gnd = { x: 0, y: GY, width: W };
+        const nFloors = 2 + Math.floor(rand());
+        let curY = GY;
+        let prev = gnd;
+
+        for (let f = 0; f < nFloors; f++) {
+            const floorY = curY - 140 - Math.floor(rand() * 60);
+            const gapX = 150 + Math.floor(rand() * 400);
+            const gapW = 80 + Math.floor(rand() * 50);
+            // Floor with gap
+            if (gapX > 20) o.push({ type: 'Platform', x: 0, y: floorY, width: gapX, height: GH });
+            if (gapX + gapW < W - 20) o.push({ type: 'Platform', x: gapX + gapW, y: floorY, width: W - gapX - gapW, height: GH });
+            // Stepping platforms between floors
+            const np = 2 + Math.floor(rand() * 2);
+            for (let p = 0; p < np; p++) {
+                const px = 30 + Math.floor(rand() * (W - 100));
+                const py = curY - 40 - Math.floor(rand() * (curY - floorY - 60));
+                const pw = d.pw + Math.floor(rand() * 30);
+                prev = vPlat(o, prev, px, Math.max(floorY + 50, py), pw);
+                path.push({ x: prev.x, y: prev.y, w: prev.width });
             }
+            curY = floorY;
+        }
+        // Exit above top floor
+        const top = path[path.length - 1] || { x: 350, y: 200, w: 100 };
+        return { o, spawn: { x: 50, y: GY - 80 }, exit: { x: top.x + 15, y: curY - 55 }, path };
+    }
 
-            // Çıkış (her zaman duvarın SAĞ tarafında — kapıdan geçilmeli)
-            const exitX = Math.min(wallX + 120, 720);
-            level.objects.push({ type: 'Exit', x: exitX, y: 370 });
-            level.objects.push({ type: 'Platform', x: wallX + 50, y: 390, width: 100, height: 20 });
+    // ════════════════════════════════════════════
+    //  UNIFIED PUZZLE PLACER
+    //  Adapts puzzle mechanics to ANY layout terrain
+    // ════════════════════════════════════════════
+    function placePuzzle(pType, lay, rand, d, n) {
+        const level = { playerStart: lay.spawn, objects: [...lay.o] };
+        const o = level.objects;
+        const path = lay.path;
 
-        } else {
-            // ====== KULE SİSTEMİ (Bölüm 12+) — Rule-Based ======
+        // Determine button count from puzzle type
+        let nBtn;
+        switch (pType) {
+            case 'LINEAR': case 'GHOST_SYNC': case 'CEILING_CRAWL': nBtn = 1; break;
+            case 'DOUBLE_BTN': case 'SPLIT_PATH': nBtn = 2; break;
+            case 'SEQUENCE': case 'TOWER': nBtn = Math.min(3, d.nb); break;
+            case 'CHAIN': case 'FORTRESS': nBtn = Math.min(4, d.nb); break;
+            case 'MASTER': nBtn = Math.min(5, d.nb); break;
+            default: nBtn = 1;
+        }
+        nBtn = Math.min(nBtn, Math.max(1, path.length - 1));
 
-            let numFloors = 1 + Math.floor(levelNum / 12);
-            if (numFloors > 3) numFloors = 3;
+        // Divide path into segments — button at end of each, barrier after
+        const segSize = Math.max(1, Math.floor(path.length / (nBtn + 1)));
 
-            let currentBaseY = 430;
+        for (let b = 0; b < nBtn; b++) {
+            // Button position: end of segment b
+            const btnIdx = Math.min((b + 1) * segSize - 1, path.length - 2);
+            const spot = path[btnIdx];
+            o.push({ type: 'Button', x: spot.x + 10, y: spot.y - 10, id: b + 1 });
 
-            for (let f = 1; f <= numFloors; f++) {
-                const ceilingY = currentBaseY - 350; // Daha kısa kat (350px)
-                const doorX = 250 + Math.floor(rand() * 300); // Kapı orta bölgede
+            // Barrier between this button and next segment
+            const nextIdx = Math.min(btnIdx + 1, path.length - 1);
+            if (nextIdx > btnIdx) {
+                const before = path[btnIdx];
+                const after = path[nextIdx];
+                const dy = before.y - after.y;
 
-                // Kapı ve Duvarlar
-                const floorButtons = Math.min(numButtons, 3);
-                for (let b = 1; b <= floorButtons; b++) {
-                    const dY = ceilingY + (b - 1) * 15;
-                    level.objects.push({ type: 'Door', x: doorX, y: dY, triggerId: (f - 1) * 3 + b, horizontal: true });
-                }
-                level.objects.push({ type: 'Platform', x: 0, y: ceilingY, width: doorX, height: 40 });
-                level.objects.push({ type: 'Platform', x: doorX + 100, y: ceilingY, width: 800 - (doorX + 100), height: 40 });
+                if (Math.abs(dy) > 60) {
+                    // Vertical movement → horizontal barrier with PERMANENT SHAFT
+                    const barY = Math.floor((before.y + after.y) / 2);
+                    const doorX = Math.max(60, Math.min(W - 200, Math.min(before.x, after.x)));
+                    // Permanent shaft: always-open gap for physical access
+                    const shaftX = Math.max(10, Math.min(W - 90, Math.max(before.x, after.x) + 30));
+                    const shaftW = 70;
 
-                // === MERDİVEN PLATFORMLARI (Sol-Sağ Alternating) ===
-                const starterY = currentBaseY - 60;
-                // Geniş başlangıç platformu (zemin üstü)
-                level.objects.push({ type: 'Platform', x: 30, y: starterY + 20, width: 200, height: 20 });
+                    const openings = [
+                        { start: doorX, end: doorX + 100 },
+                        { start: shaftX, end: shaftX + shaftW }
+                    ].sort((a, b) => a.start - b.start);
 
-                const towerStepWidth = Math.max(110, baseWidth + 30);
-                let stepWidth = towerStepWidth;
-                const towerVertGap = 50;
-                const steps = [];
-
-                // Platformlar SABİT sol-sağ-sol-sağ dizilir
-                let stepY = starterY;
-                let stepIndex = 0;
-                const leftZone = 50 + Math.floor(rand() * 80);   // Sol platform bölgesi
-                const rightZone = 400 + Math.floor(rand() * 100); // Sağ platform bölgesi
-
-                while (stepY > ceilingY + 90) {
-                    // Sırayla sol ve sağa yerleştir
-                    const isLeft = (stepIndex % 2 === 0);
-                    const stepX = isLeft ? leftZone : rightZone;
-
-                    level.objects.push({ type: 'Platform', x: stepX, y: stepY, width: stepWidth, height: 20 });
-                    steps.push({ x: stepX, y: stepY, width: stepWidth });
-
-                    stepY -= towerVertGap;
-                    stepWidth = Math.max(90, Math.floor(stepWidth * 0.95));
-                    stepIndex++;
-                }
-
-                // Kapı altı basamak (tavana geçiş)
-                const doorPlatY = ceilingY + 80;
-                level.objects.push({ type: 'Platform', x: doorX + 10, y: doorPlatY, width: 100, height: 20 });
-
-                // Son basamaktan kapıya köprü
-                const lastStep = steps.length > 0 ? steps[steps.length - 1] : { x: 100, y: starterY, width: towerStepWidth };
-                const doorStep = { x: doorX + 10, y: doorPlatY, width: 100 };
-                if (!canReach(lastStep, doorStep)) {
-                    const bridgeY = lastStep.y - towerVertGap;
-                    const bridgeX = fixPlatformPosition(lastStep, doorX + 10, bridgeY, 100);
-                    level.objects.push({ type: 'Platform', x: bridgeX, y: bridgeY, width: 100, height: 20 });
-                }
-
-                // Butonlar: Basamaklara yerleştir
-                for (let b = 0; b < floorButtons; b++) {
-                    const btnIdx = Math.floor((b + 1) * steps.length / (floorButtons + 1));
-                    const btnStep = steps[Math.min(btnIdx, steps.length - 1)];
-                    if (btnStep) {
-                        level.objects.push({
-                            type: 'Button',
-                            x: btnStep.x + 10,
-                            y: btnStep.y - 10,
-                            id: (f - 1) * 3 + b + 1
-                        });
+                    const merged = [openings[0]];
+                    for (let m = 1; m < openings.length; m++) {
+                        const last = merged[merged.length - 1];
+                        if (openings[m].start <= last.end + 10) {
+                            last.end = Math.max(last.end, openings[m].end);
+                        } else { merged.push(openings[m]); }
                     }
+
+                    let cx = 0;
+                    for (const gap of merged) {
+                        if (gap.start - cx > 20) {
+                            o.push({ type: 'Platform', x: cx, y: barY, width: gap.start - cx, height: GH });
+                        }
+                        cx = gap.end;
+                    }
+                    if (W - cx > 20) {
+                        o.push({ type: 'Platform', x: cx, y: barY, width: W - cx, height: GH });
+                    }
+                    o.push({ type: 'Door', x: doorX, y: barY, triggerId: b + 1, horizontal: true });
+
+                    // Step platforms for access
+                    const stepY1 = barY + 50;
+                    const stepY2 = barY - 50;
+                    if (stepY1 < GY - 20) o.push({ type: 'Platform', x: shaftX - 20, y: stepY1, width: 60, height: 20 });
+                    o.push({ type: 'Platform', x: shaftX + 5, y: Math.max(80, stepY2), width: 60, height: 20 });
+                } else {
+                    // Horizontal movement → vertical wall
+                    const wallX = Math.max(40, Math.min(W - 50, Math.floor((before.x + before.w + after.x) / 2)));
+                    o.push({ type: 'Platform', x: wallX, y: GY - 330, width: WT, height: 230 });
+                    o.push({ type: 'Door', x: wallX, y: GY - 100, triggerId: b + 1 });
                 }
-
-                currentBaseY = ceilingY;
             }
-
-            // Çıkış: Tavanın üstünde, kapı açıldığında ulaşılabilir
-            const lastCeiling = currentBaseY;
-            level.objects.push({ type: 'Platform', x: 300, y: lastCeiling - 60, width: 200, height: 20 });
-            level.objects.push({ type: 'Exit', x: 380, y: lastCeiling - 120 });
         }
 
+        if (pType === 'CEILING_CRAWL' || pType === 'FORTRESS' || pType === 'MASTER') {
+            const cs = path[Math.min(1, path.length - 1)];
+            if (cs) o.push({ type: 'Platform', x: cs.x - 10, y: cs.y - 33, width: Math.floor(cs.w * 0.6), height: 12 });
+            if (pType !== 'CEILING_CRAWL' && path.length > 3) {
+                const cs2 = path[Math.floor(path.length * 0.6)];
+                o.push({ type: 'Platform', x: cs2.x, y: cs2.y - 35, width: Math.floor(cs2.w * 0.5), height: 12 });
+            }
+        }
+
+        o.push({ type: 'Platform', x: lay.exit.x - 25, y: lay.exit.y + 45, width: 110, height: 20 });
+        o.push({ type: 'Exit', x: lay.exit.x, y: lay.exit.y });
+
+        return level;
+    }
+
+    // ════════════════════════════════════════════
+    //  REACHABILITY VALIDATION
+    // ════════════════════════════════════════════
+    function validateLevel(level) {
+        const platforms = level.objects.filter(o => o.type === 'Platform');
+        const buttons = level.objects.filter(o => o.type === 'Button');
+        const exits = level.objects.filter(o => o.type === 'Exit');
+        const surfs = platforms.map(p => ({ x: p.x, y: p.y, width: p.width }));
+        const spawn = level.playerStart;
+
+        function canReachTarget(tx, ty) {
+            let startPlat = surfs.reduce((best, s) => {
+                const dist = Math.abs((s.x + s.width / 2) - spawn.x) + Math.abs(s.y - (spawn.y + 40));
+                const bDist = Math.abs((best.x + best.width / 2) - spawn.x) + Math.abs(best.y - (spawn.y + 40));
+                return dist < bDist ? s : best;
+            }, surfs[0]);
+
+            const targetPlat = surfs.reduce((best, s) => {
+                const dist = Math.abs((s.x + s.width / 2) - tx) + Math.abs(s.y - ty);
+                const bDist = Math.abs((best.x + best.width / 2) - tx) + Math.abs(best.y - ty);
+                return dist < bDist ? s : best;
+            }, surfs[0]);
+
+            const visited = new Set();
+            const queue = [startPlat];
+            visited.add(surfs.indexOf(startPlat));
+
+            while (queue.length > 0) {
+                const cur = queue.shift();
+                if (cur === targetPlat) return true;
+                for (let i = 0; i < surfs.length; i++) {
+                    if (!visited.has(i) && canReach(cur, surfs[i])) {
+                        visited.add(i);
+                        queue.push(surfs[i]);
+                    }
+                }
+            }
+            return false;
+        }
+
+        for (const btn of buttons) if (!canReachTarget(btn.x, btn.y)) return false;
+        for (const ex of exits) if (!canReachTarget(ex.x, ex.y)) return false;
+        return true;
+    }
+
+    function makeFallback(n, d) {
+        const o = [{ type: 'Platform', x: 0, y: GY, width: W, height: GH }];
+        o.push({ type: 'Platform', x: 100, y: GY - 60, width: Math.max(d.pw, 80), height: 20 });
+        o.push({ type: 'Button', x: 110, y: GY - 70, id: 1 });
+        const wx = 400;
+        o.push({ type: 'Platform', x: wx, y: GY - 330, width: WT, height: 230 });
+        o.push({ type: 'Door', x: wx, y: GY - 100, triggerId: 1 });
+        o.push({ type: 'Exit', x: 600, y: GY - 60 });
+        return { playerStart: { x: 50, y: GY - 80 }, objects: o };
+    }
+
+    // ════════════════════════════════════════════
+    //  MAIN GENERATION LOOP
+    // ════════════════════════════════════════════
+    let lastLayout = null, lastType = null;
+    for (let i = 4; i < 99; i++) {
+        const n = i - 3;
+        const d = getDiff(n);
+        let level = null;
+        for (let attempt = 0; attempt < 5; attempt++) {
+            const rand = createSeededRandom(i * 7919 + 42 + attempt * 1301);
+            const layout = pickLayout(n, rand, lastLayout);
+            const type = pickType(n, rand, lastType);
+            let lay;
+            switch (layout) {
+                case 'H_MAZE': lay = layHMaze(rand, d); break;
+                case 'ARENA': lay = layArena(rand, d); break;
+                case 'SPLIT': lay = laySplit(rand, d); break;
+                case 'BACKTRACK': lay = layBacktrack(rand, d); break;
+                case 'CORE': lay = layCore(rand, d); break;
+                case 'V_TOWER': lay = layVTower(rand, d); break;
+                case 'SPIRAL': lay = laySpiral(rand, d); break;
+                case 'M_FLOOR': lay = layMFloor(rand, d); break;
+                default: lay = layHMaze(rand, d); break;
+            }
+            const candidate = placePuzzle(type, lay, rand, d, n);
+            if (validateLevel(candidate)) {
+                level = candidate;
+                lastLayout = layout;
+                lastType = type;
+                break;
+            }
+        }
+        if (!level) level = makeFallback(n, d);
         LEVELS.push(level);
     }
 }
@@ -1105,24 +1388,38 @@ const Game = {
 
     showMainMenu() {
         this.state = 'MENU';
-        document.getElementById('main-menu').style.display = 'flex';
-        document.getElementById('level-select').style.display = 'none';
+        const mainMenu = document.getElementById('main-menu');
+        const levelSelect = document.getElementById('level-select');
+        mainMenu.style.display = 'flex';
+        levelSelect.classList.remove('visible');
+        levelSelect.style.display = 'none';
         document.getElementById('game-container').style.display = 'block';
+        // Trigger fade-in on next frame
+        requestAnimationFrame(() => mainMenu.classList.add('visible'));
     },
 
     showLevelSelect() {
         this.state = 'LEVEL_SELECT';
-        document.getElementById('main-menu').style.display = 'none';
-        document.getElementById('level-select').style.display = 'flex';
+        const mainMenu = document.getElementById('main-menu');
+        const levelSelect = document.getElementById('level-select');
+        mainMenu.classList.remove('visible');
+        mainMenu.style.display = 'none';
+        levelSelect.style.display = 'flex';
+        // Trigger fade-in on next frame
+        requestAnimationFrame(() => levelSelect.classList.add('visible'));
     },
 
     loadLevel(index) {
         this.currentLevelIndex = index;
         this.state = 'PLAYING';
 
-        // UI Güncelleme
-        document.getElementById('main-menu').style.display = 'none';
-        document.getElementById('level-select').style.display = 'none';
+        // UI Güncelleme — fade out, then hide
+        const mainMenu = document.getElementById('main-menu');
+        const levelSelect = document.getElementById('level-select');
+        mainMenu.classList.remove('visible');
+        levelSelect.classList.remove('visible');
+        mainMenu.style.display = 'none';
+        levelSelect.style.display = 'none';
 
         const levelData = LEVELS[index];
 
@@ -1189,8 +1486,11 @@ const Game = {
             const newGhost = new Ghost([...this.currentRecording], color);
             this.ghosts.push(newGhost);
         }
-        // Döngü sayacını güncelle
-        document.getElementById('loop-counter').innerText = `Döngü: ${this.ghosts.length + 1}`;
+        // Döngü sayacını güncelle + pulse animation
+        const loopEl = document.getElementById('loop-counter');
+        loopEl.innerText = `Döngü: ${this.ghosts.length + 1}`;
+        loopEl.classList.remove('pulse');
+        requestAnimationFrame(() => loopEl.classList.add('pulse'));
         // Normal reset (Hayaletler kalsın)
         this.resetLevel(false);
     },
@@ -1233,15 +1533,22 @@ const Game = {
         }
         if (!Input.isDown('REWIND')) this.isRewinding = false;
 
-        // --- EĞİLME MEKANİĞİ ---
-        if (Input.isDown('CROUCH') && this.player.isGrounded) {
-            if (!this.player.isCrouching) {
-                this.player.isCrouching = true;
-                const oldH = this.player.height;
-                this.player.height = this.player.crouchHeight;
-                this.player.y += (oldH - this.player.crouchHeight); // Ayaklar yerde kalsın
+        // --- EĞİLME VE HIZLI DÜŞÜŞ MEKANİĞİ ---
+        if (Input.isDown('CROUCH')) {
+            if (this.player.isGrounded) {
+                // Yerdeyken Eğilme
+                if (!this.player.isCrouching) {
+                    this.player.isCrouching = true;
+                    const oldH = this.player.height;
+                    this.player.height = this.player.crouchHeight;
+                    this.player.y += (oldH - this.player.crouchHeight); // Ayaklar yerde kalsın
+                }
+            } else {
+                // Havadayken Hızlı Düşüş (Fast Drop)
+                this.player.vy += 2.5; // Ekstra yerçekimi
             }
         } else {
+            // Eğilme bırakıldı
             if (this.player.isCrouching) {
                 // Tavan kontrolü: Kalkarken üstte platform var mı?
                 const testY = this.player.y - (this.player.normalHeight - this.player.height);
@@ -1371,19 +1678,59 @@ const Game = {
 
         this.frame++;
         const time = (this.frame / 60).toFixed(1);
-        document.getElementById('time-display').innerText = `Bölüm: ${this.currentLevelIndex + 1} | Zaman: ${time}s`;
+        const timeEl = document.getElementById('time-display');
+        const newText = `Bölüm: ${this.currentLevelIndex + 1} | Zaman: ${time}s`;
+        if (timeEl.innerText !== newText) {
+            timeEl.innerText = newText;
+            // Pulse every 5 seconds
+            if (this.frame % 300 === 0) {
+                timeEl.classList.remove('pulse');
+                requestAnimationFrame(() => timeEl.classList.add('pulse'));
+            }
+        }
     },
 
     draw() {
         if (this.state !== 'PLAYING') return;
 
-        // === GRADIENT BACKGROUND ===
+        const now = Date.now();
+
+        // === ANIMATED GRADIENT BACKGROUND ===
+        const hueShift = Math.sin(now / 8000) * 8;
         const bgGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
-        bgGrad.addColorStop(0, '#0f1923');
-        bgGrad.addColorStop(0.5, '#1a2a3a');
-        bgGrad.addColorStop(1, '#2c3e50');
+        bgGrad.addColorStop(0, `hsl(${215 + hueShift}, 55%, 6%)`);
+        bgGrad.addColorStop(0.5, `hsl(${225 + hueShift}, 50%, 10%)`);
+        bgGrad.addColorStop(1, `hsl(${220 + hueShift}, 45%, 8%)`);
         ctx.fillStyle = bgGrad;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // === AMBIENT PARTICLES ===
+        if (!this._particles) {
+            this._particles = [];
+            for (let i = 0; i < 30; i++) {
+                this._particles.push({
+                    x: Math.random() * 800,
+                    y: Math.random() * 450,
+                    vx: (Math.random() - 0.5) * 0.3,
+                    vy: -Math.random() * 0.2 - 0.05,
+                    size: Math.random() * 2 + 0.5,
+                    alpha: Math.random() * 0.15 + 0.03
+                });
+            }
+        }
+        for (let i = 0; i < this._particles.length; i++) {
+            const p = this._particles[i];
+            p.x += p.vx;
+            p.y += p.vy;
+            if (p.y < -5) { p.y = canvas.height + 5; p.x = Math.random() * canvas.width; }
+            if (p.x < -5) p.x = canvas.width + 5;
+            if (p.x > canvas.width + 5) p.x = -5;
+            const flicker = p.alpha + Math.sin(now / 1200 + i) * 0.03;
+            ctx.fillStyle = `rgba(0, 229, 255, ${Math.max(0, flicker)})`;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fill();
+        }
 
         // === PARALLAX STARS ===
         const starSeed = 12345;
@@ -1395,7 +1742,7 @@ const Game = {
             const sy = (s % canvas.height);
             s = (s * 1103515245 + 12345) & 0x7fffffff;
             const size = 0.5 + (s % 15) / 10;
-            const twinkle = 0.3 + Math.sin(Date.now() / 800 + i * 0.7) * 0.3;
+            const twinkle = 0.3 + Math.sin(now / 800 + i * 0.7) * 0.3;
 
             // Parallax — stars shift slightly with camera
             const parallaxY = sy + this.camera.y * 0.05;
@@ -1419,14 +1766,14 @@ const Game = {
                     const isActive = obj.isPressed;
 
                     // Glow effect
-                    ctx.shadowColor = isActive ? '#2ecc71' : '#e74c3c';
-                    ctx.shadowBlur = isActive ? 10 : 4;
+                    ctx.shadowColor = isActive ? '#00e5ff' : '#b24bf3';
+                    ctx.shadowBlur = isActive ? 12 : 4;
 
                     ctx.beginPath();
                     ctx.lineWidth = isActive ? 3 : 2;
-                    ctx.strokeStyle = isActive ? 'rgba(46, 204, 113, 0.7)' : 'rgba(88, 27, 22, 0.5)';
+                    ctx.strokeStyle = isActive ? 'rgba(0, 229, 255, 0.6)' : 'rgba(178, 75, 243, 0.3)';
                     ctx.setLineDash([6, 6]);
-                    ctx.lineDashOffset = -Date.now() / 100; // Animated flow
+                    ctx.lineDashOffset = -now / 100; // Animated flow
 
                     ctx.moveTo(obj.x + 15, obj.y + 10);
                     const midX = (obj.x + targetDoor.x) / 2;
@@ -1445,13 +1792,27 @@ const Game = {
         this.ghosts.forEach(ghost => ghost.draw());
         this.player.draw();
 
+        // === AMBIENT GLOW AROUND EXIT ===
+        const exit = this.levelObjects.find(obj => obj instanceof LevelExit);
+        if (exit) {
+            const glowPulse = 0.5 + Math.sin(now / 600) * 0.2;
+            const exitGlow = ctx.createRadialGradient(
+                exit.x + 20, exit.y + 30, 5,
+                exit.x + 20, exit.y + 30, 80
+            );
+            exitGlow.addColorStop(0, `rgba(0, 229, 255, ${0.15 * glowPulse})`);
+            exitGlow.addColorStop(1, 'rgba(0, 229, 255, 0)');
+            ctx.fillStyle = exitGlow;
+            ctx.fillRect(exit.x - 60, exit.y - 50, 160, 160);
+        }
+
         // ATEŞ / LAVA EFEKTİ (Kamera yukarı gittikçe görünür olur)
         const climbAmount = -this.camera.y;
         const lavaOpacity = Math.min(1, Math.max(0, (climbAmount - 100) / 200)); // 100px sonra başla, 300px'de tam
 
         if (lavaOpacity > 0.02) {
             const lavaBaseY = this.camera.y + canvas.height;
-            const time = Date.now() / 300;
+            const time = now / 300;
 
             // Ateş Dalgaları (Katmanlı)
             for (let i = 0; i < 3; i++) {
@@ -1488,6 +1849,16 @@ const Game = {
         }
 
         ctx.restore();
+
+        // === SOFT VIGNETTE (after ctx.restore, drawn on screen space) ===
+        const vigGrad = ctx.createRadialGradient(
+            canvas.width / 2, canvas.height / 2, canvas.height * 0.35,
+            canvas.width / 2, canvas.height / 2, canvas.width * 0.75
+        );
+        vigGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+        vigGrad.addColorStop(1, 'rgba(0, 0, 0, 0.35)');
+        ctx.fillStyle = vigGrad;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
     },
 
     loop() {
