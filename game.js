@@ -54,6 +54,8 @@ window.addEventListener('keydown', () => AudioSys.init(), { once: true });
 // Canvas Kurulumu
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
+const vigCanvas = document.createElement('canvas'); // Cache için
+const vigCtx = vigCanvas.getContext('2d', { alpha: true });
 
 // Ekran boyutlandırma
 function resize() {
@@ -85,6 +87,18 @@ function resize() {
         container.style.width = '';
         container.style.height = '';
     }
+
+    // === VIGNETTE ÖNBELLEĞİ (Saniyede 60 kez üretilmesini engeller) ===
+    vigCanvas.width = canvas.width;
+    vigCanvas.height = canvas.height;
+    const vigGrad = vigCtx.createRadialGradient(
+        canvas.width / 2, canvas.height / 2, canvas.height * 0.35,
+        canvas.width / 2, canvas.height / 2, canvas.width * 0.75
+    );
+    vigGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    vigGrad.addColorStop(1, 'rgba(0, 0, 0, 0.35)');
+    vigCtx.fillStyle = vigGrad;
+    vigCtx.fillRect(0, 0, canvas.width, canvas.height);
 }
 window.addEventListener('resize', resize);
 window.onload = () => { Game.init(); resize(); setTimeout(resize, 100); setTimeout(resize, 500); };
@@ -1480,16 +1494,17 @@ const Game = {
     platforms: [],
     state: 'MENU',
 
-    // KAMERA
-    camera: { x: 0, y: 0 },
-    maxScrollY: 0,
+    // UPDATE LOOP (FIXED TIMESTEP)
+    lastTime: 0,
+    accumulator: 0,
+    timeStep: 1000 / 60, // Saniyede 60 fizik adımı (144Hz sorunu çözümü)
 
     init() {
         generateLevels(); // Bölümleri oluştur
         Input.init();
         this.createLevelButtons();
         this.showMainMenu();
-        this.loop();
+        requestAnimationFrame((ts) => this.loop(ts));
     },
 
     createLevelButtons() {
@@ -1661,6 +1676,14 @@ const Game = {
             return;
         }
         if (!Input.isDown('REWIND')) this.isRewinding = false;
+
+        // --- ZAMAN SINIRI (Maksimum 60 saniye / 3600 Frame) ---
+        if (this.currentRecording.length >= 3600 && !this.isRewinding) {
+            AudioSys.rewind();
+            this.isRewinding = true;
+            this.startNewLoop(); // Otomatik olarak zamanı sıfırla/başlat
+            return;
+        }
 
         // --- EĞİLME VE HIZLI DÜŞÜŞ MEKANİĞİ ---
         if (Input.isDown('CROUCH')) {
@@ -1987,21 +2010,28 @@ const Game = {
 
         ctx.restore();
 
-        // === SOFT VIGNETTE (after ctx.restore, drawn on screen space) ===
-        const vigGrad = ctx.createRadialGradient(
-            canvas.width / 2, canvas.height / 2, canvas.height * 0.35,
-            canvas.width / 2, canvas.height / 2, canvas.width * 0.75
-        );
-        vigGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
-        vigGrad.addColorStop(1, 'rgba(0, 0, 0, 0.35)');
-        ctx.fillStyle = vigGrad;
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        // === SOFT VIGNETTE (Cached canvas'tan çizim - Yüksek performans) ===
+        ctx.drawImage(vigCanvas, 0, 0);
     },
 
-    loop() {
-        Game.update();
+    loop(timestamp) {
+        if (!this.lastTime) this.lastTime = timestamp;
+        let delta = timestamp - this.lastTime;
+        this.lastTime = timestamp;
+
+        if (delta > 250) delta = 250; // Tarayıcı donarsa sekmeyi engelle
+
+        this.accumulator += delta;
+
+        // Saniyede tam 60 kere Update (Fizik) — Monitör Hertz'inden bağımsız
+        while (this.accumulator >= this.timeStep) {
+            Game.update();
+            this.accumulator -= this.timeStep;
+        }
+
+        // Çizim monitör hızında (144Hz ise 144 kere)
         Game.draw();
-        requestAnimationFrame(Game.loop);
+        requestAnimationFrame((ts) => Game.loop(ts));
     }
 };
 
