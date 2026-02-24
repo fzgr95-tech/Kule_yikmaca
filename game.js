@@ -925,13 +925,16 @@ function canReach(from, to, allPlatforms = []) {
 
     // Yatay sıçramayı engelleyen duvar var mı?
     if (allPlatforms.length > 0) {
-        const minX = Math.min(from.x + from.width / 2, to.x + to.width / 2);
-        const maxX = Math.max(from.x + from.width / 2, to.x + to.width / 2);
+        let minX, maxX;
+        if (fromRight < to.x) { minX = fromRight; maxX = to.x; }
+        else if (toRight < from.x) { minX = toRight; maxX = from.x; }
+        else { minX = Math.max(from.x, to.x); maxX = Math.min(fromRight, toRight); }
+
         const maxY = Math.max(from.y, to.y);
         const jumpArcMidY = Math.min(from.y, to.y) - (gap > 0 ? 40 : 10);
 
         for (const p of allPlatforms) {
-            if (p.height && p.height > 30) { // Duvar
+            if (p.height && p.height > 50) { // Sadece gerçek duvarları engel say, yatay platformları (GH=40) değil
                 if (p.x < maxX && p.x + p.width > minX) {
                     if (p.y < maxY && p.y + p.height > jumpArcMidY) {
                         return false;
@@ -945,10 +948,11 @@ function canReach(from, to, allPlatforms = []) {
         // YUKARI ZIPLAMA
         if (dy > maxJumpH * 0.9) return false;
 
-        // dy yüksekliğinde asılı kalma süresi
+        // dy yüksekliğinde asılı kalma süresi (Gerçek fizik formülü)
         const disc = jumpForce * jumpForce - 2 * gravity * dy;
         if (disc < 0) return false;
-        const hangTime = 2 * Math.sqrt(disc) / gravity;
+        // Asılı kalma süresi: v0 + sqrt(v0^2 - 2*g*h) / g
+        const hangTime = (jumpForce + Math.sqrt(disc)) / gravity;
         const maxHoriz = speed * hangTime * 0.85;
 
         return gap <= maxHoriz;
@@ -1328,16 +1332,19 @@ function generateLevels() {
                     }
                     o.push({ type: 'Door', x: doorX, y: barY, triggerId: b + 1, horizontal: true });
 
-                    // Step platforms for access
+                    // Step platforms for access (Artık vPlat ile otomatik merdiven oluşturuluyor)
                     const stepY1 = barY + 50;
                     const stepY2 = barY - 50;
-                    if (stepY1 < GY - 20) o.push({ type: 'Platform', x: shaftX - 20, y: stepY1, width: 60, height: 20 });
-                    o.push({ type: 'Platform', x: shaftX + 5, y: Math.max(80, stepY2), width: 60, height: 20 });
+                    if (stepY1 < GY - 20) {
+                        vPlat(o, before, shaftX - 20, stepY1, 60);
+                    }
+                    vPlat(o, { x: shaftX + 5, y: Math.max(80, stepY2), width: 60 }, after.x, after.y, after.w);
                 } else {
-                    // Horizontal movement → vertical wall
+                    // Horizontal movement → vertical wall (Dinamik yükseklik ile kapı ekleme)
                     const wallX = Math.max(40, Math.min(W - 50, Math.floor((before.x + before.w + after.x) / 2)));
-                    o.push({ type: 'Platform', x: wallX, y: GY - 330, width: WT, height: 230 });
-                    o.push({ type: 'Door', x: wallX, y: GY - 100, triggerId: b + 1 });
+                    const baseLevel = Math.max(before.y, after.y);
+                    o.push({ type: 'Platform', x: wallX, y: baseLevel - 250, width: WT, height: 210 });
+                    o.push({ type: 'Door', x: wallX, y: baseLevel - 40, triggerId: b + 1 });
                 }
             }
         }
@@ -1371,8 +1378,8 @@ function generateLevels() {
             ...platforms.map(p => ({ x: p.x, y: p.y, width: p.width, height: p.height }))
         ];
 
-        // Sadece üzerinden yürünebilecek zeminleri ayıklar (yatay zeminler)
-        const walkableSurfs = surfs.filter(s => s.height <= 30);
+        // Sadece üzerinden yürünebilecek zeminleri ayıklar (yatay zeminler, GH maksimum 40px)
+        const walkableSurfs = surfs.filter(s => s.height <= 50);
         const spawn = level.playerStart;
 
         function canReachTarget(tx, ty) {
