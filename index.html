@@ -8,7 +8,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="mobile-web-app-capable" content="yes">
-    <meta name="theme-color" content="#0a0a0f">
+    <meta name="theme-color" content="#06070d">
+    <meta name="description" content="Zamanın Yankısı — Zaman döngüsü tabanlı bulmaca platform oyunu">
     <title>Zamanın Yankısı</title>
     <link rel="stylesheet" href="style.css">
 </head>
@@ -23,9 +24,13 @@
     </div>
 
     <div id="game-container">
+        <!-- Noise texture overlay -->
+        <div class="noise-overlay"></div>
+
         <!-- Menüler -->
-        <div id="main-menu" class="screen">
+        <div id="main-menu" class="screen visible">
             <h1 class="game-title">ZAMANIN YANKISI</h1>
+            <p class="menu-subtitle">Zaman Döngüsü Bulmacası</p>
             <button class="menu-btn" onclick="Game.showLevelSelect()">OYNA</button>
         </div>
 
@@ -37,9 +42,11 @@
 
         <!-- HUD -->
         <div id="ui-layer">
-            <div id="time-display">Zaman: 0.0s</div>
-            <div id="loop-counter">Döngü: 1</div>
-            <button id="menu-return-btn" onclick="Game.showMainMenu()">MENÜ</button>
+            <div class="hud-panel">
+                <div id="time-display">Zaman: 0.0s</div>
+                <div id="loop-counter">Döngü: 1</div>
+            </div>
+            <button id="menu-return-btn" onclick="Game.showMainMenu()" aria-label="Ana menüye dön">☰ MENÜ</button>
         </div>
 
         <canvas id="gameCanvas"></canvas>
@@ -52,6 +59,7 @@
                 </div>
             </div>
             <div class="action-row">
+                <button id="btn-crouch" class="control-btn action-btn" aria-label="Eğil/Aşağı">▼</button>
                 <button id="btn-rewind" class="control-btn action-btn" aria-label="Geri Sar">R</button>
                 <button id="btn-jump" class="control-btn action-btn jump-btn" aria-label="Zıpla">▲</button>
             </div>

@@ -5,6 +5,52 @@ const CONFIG = {
     FPS: 60
 };
 
+// === SES SİSTEMİ (PROSEDÜREL) ===
+const AudioSys = {
+    ctx: null,
+    init() {
+        if (!this.ctx) {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (AudioContext) {
+                this.ctx = new AudioContext();
+            }
+        }
+    },
+    playTone(freq, type, duration, vol = 0.1, slideFreq = null) {
+        if (!this.ctx) return;
+        if (this.ctx.state === 'suspended') this.ctx.resume();
+        try {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = type;
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+            if (slideFreq) {
+                osc.frequency.exponentialRampToValueAtTime(slideFreq, this.ctx.currentTime + duration);
+            }
+            gain.gain.setValueAtTime(vol, this.ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + duration);
+            osc.start();
+            osc.stop(this.ctx.currentTime + duration);
+        } catch (e) { }
+    },
+    jump() { this.playTone(300, 'sine', 0.25, 0.15, 600); },
+    crouch() { this.playTone(200, 'sine', 0.15, 0.05, 100); },
+    button() { this.playTone(800, 'square', 0.1, 0.05, 1200); },
+    door() { this.playTone(150, 'sawtooth', 0.4, 0.08, 100); },
+    rewind() { this.playTone(600, 'triangle', 0.4, 0.1, 200); },
+    die() { this.playTone(100, 'sawtooth', 0.6, 0.2, 50); },
+    exit() {
+        this.playTone(400, 'sine', 0.3, 0.1, 800);
+        setTimeout(() => this.playTone(600, 'sine', 0.4, 0.1, 1200), 150);
+    }
+};
+
+window.addEventListener('mousedown', () => AudioSys.init(), { once: true });
+window.addEventListener('touchstart', () => AudioSys.init(), { once: true });
+window.addEventListener('keydown', () => AudioSys.init(), { once: true });
+
 // Canvas Kurulumu
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
@@ -67,6 +113,7 @@ const Input = {
         this.initJoystick();
 
         // Aksiyon butonları (sağ taraf)
+        this.bindTouch('btn-crouch', 'crouch');
         this.bindTouch('btn-jump', 'jump');
         this.bindTouch('btn-rewind', 'rewind');
     },
@@ -521,6 +568,7 @@ class GameButton {
     }
 
     update(entities) {
+        const wasPressed = this.isPressed;
         this.isPressed = false;
         // Oyuncu veya herhangi bir hayalet butona basıyor mu?
         entities.forEach(entity => {
@@ -531,6 +579,7 @@ class GameButton {
                 this.isPressed = true;
             }
         });
+        if (this.isPressed && !wasPressed) AudioSys.button();
     }
 
     draw() {
@@ -578,6 +627,7 @@ class Door {
     }
 
     update(isTriggerActive) {
+        if (isTriggerActive && !this.isOpen) AudioSys.door();
         if (this.isHorizontal) {
             // Yatay kapı: yana kayar
             const targetX = isTriggerActive ? this.initialX + this.width : this.initialX;
@@ -843,46 +893,61 @@ function createSeededRandom(seed) {
 // ============================================
 
 // İki platform arasında zıplayarak geçiş mümkün mü?
-function canReach(from, to) {
+function canReach(from, to, allPlatforms = []) {
     // from, to: {x, y, width} → y = platformun üst yüzeyi
-    const jumpForce = 14; // CONFIG.JUMP_FORCE (pozitif)
-    const gravity = 0.8;  // CONFIG.GRAVITY
-    const speed = 6;      // CONFIG.SPEED
+    const jumpForce = 14;
+    const gravity = 0.8;
+    const speed = 6;
     const maxJumpH = (jumpForce * jumpForce) / (2 * gravity); // ~122px
 
-    // Dikey fark (pozitif = yukarı zılamak lazım)
     const dy = from.y - to.y;
 
-    // Yatay boşluk (en yakın kenarlar arası)
     const fromRight = from.x + from.width;
     const toRight = to.x + to.width;
     let gap;
-    if (fromRight < to.x) gap = to.x - fromRight;       // to sağda
-    else if (toRight < from.x) gap = from.x - toRight;   // to solda
-    else gap = 0; // Üst üste biniyor
+    if (fromRight < to.x) gap = to.x - fromRight;
+    else if (toRight < from.x) gap = from.x - toRight;
+    else gap = 0;
+
+    // Yatay sıçramayı engelleyen duvar var mı?
+    if (allPlatforms.length > 0) {
+        const minX = Math.min(from.x + from.width / 2, to.x + to.width / 2);
+        const maxX = Math.max(from.x + from.width / 2, to.x + to.width / 2);
+        const maxY = Math.max(from.y, to.y);
+        const jumpArcMidY = Math.min(from.y, to.y) - (gap > 0 ? 40 : 10);
+
+        for (const p of allPlatforms) {
+            if (p.height && p.height > 30) { // Duvar
+                if (p.x < maxX && p.x + p.width > minX) {
+                    if (p.y < maxY && p.y + p.height > jumpArcMidY) {
+                        return false;
+                    }
+                }
+            }
+        }
+    }
 
     if (dy > 0) {
         // YUKARI ZIPLAMA
-        if (dy > maxJumpH * 0.9) return false; // %10 güvenlik payı
+        if (dy > maxJumpH * 0.9) return false;
 
         // dy yüksekliğinde asılı kalma süresi
         const disc = jumpForce * jumpForce - 2 * gravity * dy;
         if (disc < 0) return false;
         const hangTime = 2 * Math.sqrt(disc) / gravity;
-        const maxHoriz = speed * hangTime * 0.85; // %15 güvenlik payı
+        const maxHoriz = speed * hangTime * 0.85;
 
         return gap <= maxHoriz;
     } else {
         // AŞAĞI DÜŞME veya AYNI SEVİYE
-        // Düşerken yatay mesafe çok geniş, sadece aşırı uzaklığı engelle
-        return gap <= 300;
+        return gap <= 250;
     }
 }
 
 // Platform pozisyonunu düzelt (erişilebilir hale getir)
-function fixPlatformPosition(from, toX, toY, toWidth) {
+function fixPlatformPosition(from, toX, toY, toWidth, allPlatforms = []) {
     // Önce mevcut konum geçerli mi?
-    if (canReach(from, { x: toX, y: toY, width: toWidth })) {
+    if (canReach(from, { x: toX, y: toY, width: toWidth }, allPlatforms)) {
         return toX; // Geçerli, değiştirmeye gerek yok
     }
 
@@ -894,7 +959,7 @@ function fixPlatformPosition(from, toX, toY, toWidth) {
     for (let offset = 20; offset <= 300; offset += 20) {
         const newX = fromCenter + direction * (offset - toWidth / 2);
         const clamped = Math.max(20, Math.min(660, newX));
-        if (canReach(from, { x: clamped, y: toY, width: toWidth })) {
+        if (canReach(from, { x: clamped, y: toY, width: toWidth }, allPlatforms)) {
             return clamped;
         }
     }
@@ -955,7 +1020,22 @@ function generateLevels() {
 
     // ─── Helper: validated platform placement ───
     function vPlat(objs, prev, x, y, w) {
-        if (!canReach(prev, { x, y, width: w })) x = fixPlatformPosition(prev, x, y, w);
+        const maxJumpSafe = 100; // maxJumpH * 0.8 padding
+        let curPrev = prev;
+
+        // Zıplama mesafesini aşan durumlarda merdiven / basamaklar ekle
+        while (curPrev.y - y > maxJumpSafe) {
+            const stepY = curPrev.y - maxJumpSafe + 15;
+            let stepX = curPrev.x + (Math.random() > 0.5 ? 90 : -90);
+            stepX = Math.max(10, Math.min(W - w - 10, stepX));
+            if (!canReach(curPrev, { x: stepX, y: stepY, width: w }, objs)) {
+                stepX = fixPlatformPosition(curPrev, stepX, stepY, w, objs);
+            }
+            objs.push({ type: 'Platform', x: stepX, y: stepY, width: w, height: 20 });
+            curPrev = { x: stepX, y: stepY, width: w };
+        }
+
+        if (!canReach(curPrev, { x, y, width: w }, objs)) x = fixPlatformPosition(curPrev, x, y, w, objs);
         x = Math.max(10, Math.min(W - w - 10, x));
         y = Math.max(80, y);
         objs.push({ type: 'Platform', x, y, width: w, height: 20 });
@@ -1199,10 +1279,15 @@ function generateLevels() {
                 if (Math.abs(dy) > 60) {
                     // Vertical movement → horizontal barrier with PERMANENT SHAFT
                     const barY = Math.floor((before.y + after.y) / 2);
-                    const doorX = Math.max(60, Math.min(W - 200, Math.min(before.x, after.x)));
-                    // Permanent shaft: always-open gap for physical access
+                    // Ensure the shaft and door don't completely overlap or trap the player
                     const shaftX = Math.max(10, Math.min(W - 90, Math.max(before.x, after.x) + 30));
                     const shaftW = 70;
+
+                    let doorX = Math.max(60, Math.min(W - 200, Math.min(before.x, after.x)));
+                    // Eğer kapı permenant shaft ile çakışıyorsa kapıyı kaydır
+                    if (Math.abs(doorX - shaftX) < 80) {
+                        doorX = (shaftX > W / 2) ? shaftX - 100 : shaftX + 100;
+                    }
 
                     const openings = [
                         { start: doorX, end: doorX + 100 },
@@ -1261,41 +1346,73 @@ function generateLevels() {
     // ════════════════════════════════════════════
     //  REACHABILITY VALIDATION
     // ════════════════════════════════════════════
-    function validateLevel(level) {
+    function validateLevel(level, levelIndex = -1) {
         const platforms = level.objects.filter(o => o.type === 'Platform');
+        const doors = level.objects.filter(o => o.type === 'Door');
         const buttons = level.objects.filter(o => o.type === 'Button');
         const exits = level.objects.filter(o => o.type === 'Exit');
-        const surfs = platforms.map(p => ({ x: p.x, y: p.y, width: p.width }));
+
+        // Tüm fiziksel engeller (platformlar + kapalı kapılar)
+        const surfs = [
+            ...platforms.map(p => ({ x: p.x, y: p.y, width: p.width, height: p.height })),
+            ...doors.map(d => ({
+                x: d.x, y: d.y,
+                width: d.horizontal ? 150 : 20, // Tahmini kapı boyutları
+                height: d.horizontal ? 20 : 150
+            }))
+        ];
+
+        // Sadece üzerinden yürünebilecek zeminleri ayıklar (yatay zeminler)
+        const walkableSurfs = surfs.filter(s => s.height <= 30);
         const spawn = level.playerStart;
 
         function canReachTarget(tx, ty) {
-            let startPlat = surfs.reduce((best, s) => {
-                const dist = Math.abs((s.x + s.width / 2) - spawn.x) + Math.abs(s.y - (spawn.y + 40));
-                const bDist = Math.abs((best.x + best.width / 2) - spawn.x) + Math.abs(best.y - (spawn.y + 40));
-                return dist < bDist ? s : best;
-            }, surfs[0]);
+            let startPlat = walkableSurfs.find(s => spawn.x >= s.x && spawn.x <= s.x + s.width && Math.abs(s.y - (spawn.y + 40)) < 30);
+            if (!startPlat) {
+                startPlat = walkableSurfs.reduce((best, s) => {
+                    const dist = Math.abs((s.x + s.width / 2) - spawn.x) + Math.abs(s.y - (spawn.y + 40));
+                    const bDist = Math.abs((best.x + best.width / 2) - spawn.x) + Math.abs(best.y - (spawn.y + 40));
+                    return dist < bDist ? s : best;
+                }, walkableSurfs[0]);
+            }
 
-            const targetPlat = surfs.reduce((best, s) => {
-                const dist = Math.abs((s.x + s.width / 2) - tx) + Math.abs(s.y - ty);
-                const bDist = Math.abs((best.x + best.width / 2) - tx) + Math.abs(best.y - ty);
-                return dist < bDist ? s : best;
-            }, surfs[0]);
+            let targetPlat = walkableSurfs.find(s => tx >= s.x && tx <= s.x + s.width && Math.abs(s.y - (ty + 10)) < 30);
+            if (!targetPlat) {
+                targetPlat = walkableSurfs.reduce((best, s) => {
+                    const dist = Math.abs((s.x + s.width / 2) - tx) + Math.abs(s.y - ty);
+                    const bDist = Math.abs((best.x + best.width / 2) - tx) + Math.abs(best.y - ty);
+                    return dist < bDist ? s : best;
+                }, walkableSurfs[0]);
+            }
+
+            if (!startPlat || !targetPlat) return false;
 
             const visited = new Set();
             const queue = [startPlat];
-            visited.add(surfs.indexOf(startPlat));
+            visited.add(walkableSurfs.indexOf(startPlat));
 
             while (queue.length > 0) {
                 const cur = queue.shift();
-                if (cur === targetPlat) return true;
-                for (let i = 0; i < surfs.length; i++) {
-                    if (!visited.has(i) && canReach(cur, surfs[i])) {
+                if (cur === targetPlat) {
+                    if (levelIndex === 40) console.log(`[LEVEL 41 DEBUG] Found path to target (${tx}, ${ty})!`);
+                    return true;
+                }
+                for (let i = 0; i < walkableSurfs.length; i++) {
+                    // Gezinilebilir yüzeylere zıpla, bloklayıcı tüm 'surfs'leri dikkate al
+                    if (!visited.has(i) && canReach(cur, walkableSurfs[i], surfs)) {
                         visited.add(i);
-                        queue.push(surfs[i]);
+                        queue.push(walkableSurfs[i]);
                     }
                 }
             }
+            if (levelIndex === 40) console.log(`[LEVEL 41 DEBUG] FAILED to reach target (${tx}, ${ty}) from spawn.`);
             return false;
+        }
+
+        // Kural: İlk buton erişilebilir olmak zorundadır
+        if (buttons.length > 0) {
+            if (levelIndex === 40) console.log(`[LEVEL 41 DEBUG] Checking first button at (${buttons[0].x}, ${buttons[0].y})...`);
+            if (!canReachTarget(buttons[0].x, buttons[0].y)) return false;
         }
 
         for (const btn of buttons) if (!canReachTarget(btn.x, btn.y)) return false;
@@ -1339,7 +1456,7 @@ function generateLevels() {
                 default: lay = layHMaze(rand, d); break;
             }
             const candidate = placePuzzle(type, lay, rand, d, n);
-            if (validateLevel(candidate)) {
+            if (validateLevel(candidate, i - 4)) {
                 level = candidate;
                 lastLayout = layout;
                 lastType = type;
@@ -1365,6 +1482,7 @@ const Game = {
 
     // KAMERA
     camera: { x: 0, y: 0 },
+    maxScrollY: 0,
 
     init() {
         generateLevels(); // Bölümleri oluştur
@@ -1430,6 +1548,7 @@ const Game = {
 
         this.player = new Player(levelData.playerStart.x, levelData.playerStart.y);
         this.camera.y = 0; // Kamerayı sıfırla
+        this.maxScrollY = 0;
 
         this.levelObjects = [];
         this.platforms = [];
@@ -1458,6 +1577,8 @@ const Game = {
         this.isRewinding = false;
         // Kamerayı resetle (En baştan)
         this.camera.y = 0;
+        this.maxScrollY = 0;
+        if (hardReset) AudioSys.die();
 
         // Obje durumlarını sıfırla (buton/kapı)
         this.levelObjects.forEach(obj => {
@@ -1498,21 +1619,28 @@ const Game = {
     update() {
         if (this.state !== 'PLAYING') return;
 
-        // --- KAMERA TAKİBİ (SADECE YUKARI) ---
+        // --- KAMERA TAKİBİ (ESNEK 100PX AŞAĞI İNİŞ İZNİ) ---
         // Oyuncu ekranın %40'ından yukarı çıkarsa kamera yukarı kaysın
         const targetCamY = Math.min(0, this.player.y - 300);
 
-        // Kamera sadece YUKARI gider (Geri dönmez - Zorluk)
         if (targetCamY < this.camera.y) {
-            // Smooth scroll
+            // Smooth scroll (Hızlı yukarı çıkış)
             this.camera.y += (targetCamY - this.camera.y) * 0.1;
+        } else if (targetCamY > this.camera.y + 100) {
+            // Az da olsa aşağı inmesine izin ver (Kör olmamak için)
+            this.camera.y += (targetCamY - (this.camera.y + 100)) * 0.05;
+        }
+
+        if (this.camera.y < this.maxScrollY) {
+            this.maxScrollY = this.camera.y;
         }
 
         // --- ÖLÜM KONTROLÜ (LAVA / AŞAĞI DÜŞME) ---
-        const climbAmount = -this.camera.y;
+        // Lava'yı maxScrollY'ye bağladık, o yüzden kamera inse de lava inmez.
+        const climbAmount = -this.maxScrollY;
         if (climbAmount > 150) {
             // Kule seviyelerde: Lava ekranın altında (görünür uyarı sonrası ölüm)
-            const lavaSurfaceY = this.camera.y + canvas.height + 30;
+            const lavaSurfaceY = this.maxScrollY + canvas.height + 30;
             if (this.player.y + this.player.height >= lavaSurfaceY) {
                 this.resetLevel(true);
                 return;
@@ -1527,6 +1655,7 @@ const Game = {
 
         // Rewind
         if (Input.isDown('REWIND') && !this.isRewinding) {
+            AudioSys.rewind();
             this.isRewinding = true;
             this.startNewLoop();
             return;
@@ -1539,6 +1668,7 @@ const Game = {
                 // Yerdeyken Eğilme
                 if (!this.player.isCrouching) {
                     this.player.isCrouching = true;
+                    AudioSys.crouch();
                     const oldH = this.player.height;
                     this.player.height = this.player.crouchHeight;
                     this.player.y += (oldH - this.player.crouchHeight); // Ayaklar yerde kalsın
@@ -1609,9 +1739,15 @@ const Game = {
         if (Input.isDown('JUMP') && this.player.isGrounded) {
             this.player.vy = CONFIG.JUMP_FORCE;
             this.player.isGrounded = false;
+            AudioSys.jump();
         }
 
         this.player.vy += CONFIG.GRAVITY;
+
+        // Terminal Velocity (Platformları delip geçmemek için hız sınırı)
+        const maxFallSpeed = 19;
+        if (this.player.vy > maxFallSpeed) this.player.vy = maxFallSpeed;
+
         this.player.y += this.player.vy;
         this.player.isGrounded = false; // Havada varsayalım
 
@@ -1653,6 +1789,7 @@ const Game = {
         const allButtons = this.levelObjects.filter(obj => obj instanceof GameButton);
         const allPressed = allButtons.length === 0 || allButtons.every(b => b.isPressed);
         if (exit && allPressed && CheckAABB(this.player, exit)) {
+            AudioSys.exit();
             this.nextLevel();
             return;
         }
@@ -1807,11 +1944,11 @@ const Game = {
         }
 
         // ATEŞ / LAVA EFEKTİ (Kamera yukarı gittikçe görünür olur)
-        const climbAmount = -this.camera.y;
+        const climbAmount = -this.maxScrollY;
         const lavaOpacity = Math.min(1, Math.max(0, (climbAmount - 100) / 200)); // 100px sonra başla, 300px'de tam
 
         if (lavaOpacity > 0.02) {
-            const lavaBaseY = this.camera.y + canvas.height;
+            const lavaBaseY = this.maxScrollY + canvas.height;
             const time = now / 300;
 
             // Ateş Dalgaları (Katmanlı)
