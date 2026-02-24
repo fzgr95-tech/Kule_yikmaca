@@ -1501,6 +1501,7 @@ const Game = {
     currentLevelIndex: 0,
     platforms: [],
     state: 'MENU',
+    camera: { x: 0, y: 0 },
     maxScrollY: 0,
 
     // UPDATE LOOP (FIXED TIMESTEP)
