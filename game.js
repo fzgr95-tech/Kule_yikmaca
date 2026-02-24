@@ -1366,14 +1366,9 @@ function generateLevels() {
         const buttons = level.objects.filter(o => o.type === 'Button');
         const exits = level.objects.filter(o => o.type === 'Exit');
 
-        // Tüm fiziksel engeller (platformlar + kapalı kapılar)
+        // Tüm fiziksel engeller (sadece platformlar, kapılar oyuncu ilerledikçe açılacağı için doğrulamayı tıkamamalı)
         const surfs = [
-            ...platforms.map(p => ({ x: p.x, y: p.y, width: p.width, height: p.height })),
-            ...doors.map(d => ({
-                x: d.x, y: d.y,
-                width: d.horizontal ? 150 : 20, // Tahmini kapı boyutları
-                height: d.horizontal ? 20 : 150
-            }))
+            ...platforms.map(p => ({ x: p.x, y: p.y, width: p.width, height: p.height }))
         ];
 
         // Sadece üzerinden yürünebilecek zeminleri ayıklar (yatay zeminler)
