@@ -1405,7 +1405,15 @@ function generateLevels() {
             const queue = [startPlat];
             visited.add(walkableSurfs.indexOf(startPlat));
 
+            let attempts = 0; // Sonsuz döngü kırıcısı
+
             while (queue.length > 0) {
+                attempts++;
+                if (attempts > 500) {
+                    if (levelIndex === 40) console.log(`[LEVEL 41 DEBUG] ESCAPED INFINITE LOOP`);
+                    return false; // Çok karmaşık veya döngüsel bölüm, doğrudan reddet
+                }
+
                 const cur = queue.shift();
                 if (cur === targetPlat) {
                     if (levelIndex === 40) console.log(`[LEVEL 41 DEBUG] Found path to target (${tx}, ${ty})!`);
@@ -1493,6 +1501,7 @@ const Game = {
     currentLevelIndex: 0,
     platforms: [],
     state: 'MENU',
+    maxScrollY: 0,
 
     // UPDATE LOOP (FIXED TIMESTEP)
     lastTime: 0,
