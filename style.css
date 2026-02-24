@@ -308,6 +308,7 @@ canvas {
 .level-grid {
     display: grid;
     grid-template-columns: repeat(5, 1fr);
+    grid-auto-rows: 1fr;
     gap: calc(var(--grid) * 1.5);
     margin-bottom: 20px;
     max-height: 280px;
@@ -337,6 +338,7 @@ canvas {
 .level-btn {
     width: 100%;
     aspect-ratio: 1;
+    min-height: 48px;
     background: var(--glass-bg);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
