@@ -2024,6 +2024,7 @@ const Game = {
     },
 
     loop(timestamp) {
+        if (!timestamp) timestamp = performance.now();
         if (!this.lastTime) this.lastTime = timestamp;
         let delta = timestamp - this.lastTime;
         this.lastTime = timestamp;
